@@ -46,22 +46,32 @@ protected:
 
 	void CheckThreadTerminate();
 	void SetupHotKey();
-	void OpenRecordingFile();
-	void LoadRecordingFromFile();
-	void SaveRecordingToFile();
+	void LoadMouseInformationFromFile();
+	void SaveToFile(BOOL bSequence=FALSE);
+	BOOL CheckBeforePressButton();
+	void AddNewSequence(BOOL bDelayOnly=FALSE, BOOL bRightClick=FALSE);
+	void AddSequenceColumn(UINT unIndex, UINT unSubItem, char* szText);
+	void AddSequenceOneLine(UINT unIndex, CMouseInformation mi);
+	void AddSequenceAllWithVector();
 
 public:
 	std::vector< CMouseInformation > m_vRecording;
+	std::vector< CMouseInformation > m_vSequence;
 
 	DWORD m_dwInterval;
 	DWORD m_dwIntervalSec;
 	DWORD m_dwIntervalMilliSec;
 	DWORD m_dwFixPosX;
 	DWORD m_dwFixPosY;
+	DWORD m_dwCapturePosX;
+	DWORD m_dwCapturePosY;
 
 	DWORD m_dwRecordingDelay;
+	DWORD m_dwSequenceInterval;
+	DWORD m_dwSequenceRepeat;
 
 	INT m_nMousePosSetup;
+	INT m_nSaveType;
 	
 	UINT m_unButtonOption;
 	UINT m_unClickOption;
@@ -74,17 +84,20 @@ public:
 
 	
 	CComboBox m_ctlPresetInterval;
-	CComboBox m_ctlRecordingSetup;
 	CSpinButtonCtrl m_ctlSpinIntervalSec;
 	CSpinButtonCtrl m_ctlSpinIntervalMilliSec;
 	CButton m_btnTarget;
 	CButton m_btnRecording;
 	CButton m_btnStart;
 	CButton m_btnPause;
+	CButton m_btnSequence;
+	CButton m_ctlRepeatCheck;
 	CComboBox m_ctlStartHotKey;
 	CComboBox m_ctlStopHotKey;
 	CComboBox m_ctlButtonOption;
 	CComboBox m_ctlClickOption;
+	CListCtrl m_ctlSequenceListBox;
+	
 
 public:
 	afx_msg void OnBnClickedOk();
@@ -101,6 +114,7 @@ public:
 	afx_msg void OnBnClickedRadioMousePosition();
 	afx_msg void OnBnClickedRadioMousePosition2();
 	afx_msg void OnBnClickedRadioMousePosition3();
+	afx_msg void OnBnClickedRadioMousePosition4();
 	afx_msg void OnCbnSelchangeComboButton();
 	afx_msg void OnCbnSelchangeComboClick();
 	afx_msg void OnHotKey(UINT nHotKeyId, UINT nKey1, UINT nKey2);
@@ -108,10 +122,15 @@ public:
 	afx_msg void OnCbnSelchangeComboHotkey2();
 	afx_msg void OnDeltaposSpinIntervalS(NMHDR *pNMHDR, LRESULT *pResult);
 	afx_msg void OnDeltaposSpinIntervalMs(NMHDR *pNMHDR, LRESULT *pResult);
-
-
-	
 	afx_msg void OnBnClickedButtonRecording();
-	afx_msg void OnBnClickedButtonBrowseRecording();
+	afx_msg void OnBnClickedButtonBrowse();	
+	afx_msg void OnBnClickedButtonSequence();
+	afx_msg void OnBnClickedButtonSequenceIdle();
+	afx_msg void OnBnClickedButtonSequenceModify();
+	afx_msg void OnBnClickedButtonSequenceDelete();
+	afx_msg void OnBnClickedCheckRepeat();
+	afx_msg void OnBnClickedButtonSequenceDeleteAll();
+	afx_msg void OnBnClickedButtonSequenceMoveUp();
+	afx_msg void OnBnClickedButtonSequenceMoveDown();
 	
 };

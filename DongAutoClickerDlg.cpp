@@ -7,6 +7,7 @@
 #include "DongAutoClickerDlg.h"
 #include "afxdialogex.h"
 #include "SetupDlg.h"
+#include "SequenceDlg.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -19,7 +20,7 @@ static BOOL g_bStarted = FALSE;
 static CSetupDlg g_dlgSetup;
 static HHOOK g_hHook;
 static CDongAutoClickerDlg* g_pDlg;
-static UINT g_unRecordingIndex = 0;
+static UINT g_unPlayIndex = 0;
 
 static LRESULT CALLBACK MouseMsgProc(UINT nCode, WPARAM wParam, LPARAM lParam)
 {
@@ -35,12 +36,8 @@ static LRESULT CALLBACK MouseMsgProc(UINT nCode, WPARAM wParam, LPARAM lParam)
 		CMouseInformation mi;
 		mi.m_unMsg = wParam;
 		switch (wParam){
-
-		case WM_LBUTTONDBLCLK:
-			TRACE("WM_LBUTTONDBLCLK\n");
-			break;
-		case WM_NCMOUSEMOVE:
-			TRACE("WM_NCMOUSEMOVE\n");
+		case WM_MBUTTONDOWN:
+		case WM_MBUTTONUP:
 			break;
 		
 
@@ -48,8 +45,7 @@ static LRESULT CALLBACK MouseMsgProc(UINT nCode, WPARAM wParam, LPARAM lParam)
 		case WM_LBUTTONUP:
 		case WM_RBUTTONDOWN:
 		case WM_RBUTTONUP:
-		case WM_MBUTTONDOWN:
-		case WM_MBUTTONUP:
+		
 			mi.m_stPoint = pMouseStruct->pt;
 
 			if(g_pDlg->m_vRecording.size() == 0) {
@@ -79,8 +75,8 @@ static UINT RecordingThread(LPVOID pParam)
 	{
 		while(g_bStarted) 
 		{
-			if( g_pDlg->m_vRecording.size() <= g_unRecordingIndex ) {
-				if(g_pDlg->m_ctlRecordingSetup.GetCurSel() == 0) {
+			if( g_pDlg->m_vRecording.size() <= g_unPlayIndex ) {
+				if(g_pDlg->m_ctlRepeatCheck.GetCheck() == TRUE) {
 					if( g_pDlg->m_dwRepeatInterval > 0 ) {
 						for(UINT uCnt = 0 ; uCnt < g_pDlg->m_dwRepeatInterval ; uCnt++) {
 							Sleep(100);
@@ -92,7 +88,7 @@ static UINT RecordingThread(LPVOID pParam)
 					}
 
 					g_pDlg->m_dwRecordingDelay = GetTickCount();
-					g_unRecordingIndex = 0;
+					g_unPlayIndex = 0;
 					TRACE("Repeat again\n");
 					continue;
 				} else {
@@ -101,8 +97,8 @@ static UINT RecordingThread(LPVOID pParam)
 				}
 			}
 
-			if( g_pDlg->m_vRecording[ g_unRecordingIndex ].m_dwDelayMilliSec <= GetTickCount() - g_pDlg->m_dwRecordingDelay ) {
-				TRACE("Press Mouse - TimeClock = %d\n",g_pDlg->m_vRecording[ g_unRecordingIndex ].m_dwDelayMilliSec);
+			if( g_pDlg->m_vRecording[ g_unPlayIndex ].m_dwDelayMilliSec <= GetTickCount() - g_pDlg->m_dwRecordingDelay ) {
+				TRACE("Press Mouse - TimeClock = %d\n",g_pDlg->m_vRecording[ g_unPlayIndex ].m_dwDelayMilliSec);
 
 		
 				INPUT input;
@@ -113,21 +109,21 @@ static UINT RecordingThread(LPVOID pParam)
 
 				input.mi.dwFlags=(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_MOVE);
 				input.mi.dwFlags|= (
-					g_pDlg->m_vRecording[ g_unRecordingIndex ].m_unMsg == WM_LBUTTONUP ? MOUSEEVENTF_LEFTUP :
-					g_pDlg->m_vRecording[ g_unRecordingIndex ].m_unMsg == WM_LBUTTONDOWN ? MOUSEEVENTF_LEFTDOWN :
-					g_pDlg->m_vRecording[ g_unRecordingIndex ].m_unMsg == WM_RBUTTONUP ? MOUSEEVENTF_RIGHTUP :
+					g_pDlg->m_vRecording[ g_unPlayIndex ].m_unMsg == WM_LBUTTONUP ? MOUSEEVENTF_LEFTUP :
+					g_pDlg->m_vRecording[ g_unPlayIndex ].m_unMsg == WM_LBUTTONDOWN ? MOUSEEVENTF_LEFTDOWN :
+					g_pDlg->m_vRecording[ g_unPlayIndex ].m_unMsg == WM_RBUTTONUP ? MOUSEEVENTF_RIGHTUP :
 					MOUSEEVENTF_RIGHTDOWN
 					);
 
 
-				input.mi.dx=(LONG)((FLOAT)g_pDlg->m_vRecording[ g_unRecordingIndex ].m_stPoint.x * (65536.0f / GetSystemMetrics(SM_CXSCREEN)));
-				input.mi.dy=(LONG)((FLOAT)g_pDlg->m_vRecording[ g_unRecordingIndex ].m_stPoint.y * (65536.0f / GetSystemMetrics(SM_CYSCREEN)));
+				input.mi.dx=(LONG)((FLOAT)g_pDlg->m_vRecording[ g_unPlayIndex ].m_stPoint.x * (65535.0f / (GetSystemMetrics(SM_CXSCREEN)-1)));
+				input.mi.dy=(LONG)((FLOAT)g_pDlg->m_vRecording[ g_unPlayIndex ].m_stPoint.y * (65535.0f / (GetSystemMetrics(SM_CYSCREEN)-1)));
 
 				SendInput(1,&input,sizeof(INPUT));
-				g_unRecordingIndex++;
+				g_unPlayIndex++;
 			}
 
-			Sleep(10);
+			Sleep(1);
 		}
 	} else {
 		g_pDlg->OnBnClickedButtonStop();
@@ -135,6 +131,76 @@ static UINT RecordingThread(LPVOID pParam)
 
 
 	TRACE("Recording Thread End\n");
+	return 0;
+}
+
+static UINT SequenceThread(LPVOID pParam)
+{
+	if(g_pDlg->m_vSequence.size() > 0) 
+	{
+		while(g_bStarted) 
+		{
+			if( g_pDlg->m_vSequence.size() <= g_unPlayIndex ) {
+				if(g_pDlg->m_ctlRepeatCheck.GetCheck() == TRUE) {
+					g_pDlg->m_dwRecordingDelay = GetTickCount();
+					g_unPlayIndex = 0;
+					TRACE("Repeat again\n");
+					continue;
+				} else {
+					g_pDlg->OnBnClickedButtonStop();
+					break;
+				}
+			}
+
+			if(g_pDlg->m_vSequence[ g_unPlayIndex ].m_bDelayOnly == FALSE) 
+			{
+				INPUT input;
+				input.type=INPUT_MOUSE;
+				input.mi.mouseData=0;
+				input.mi.dwExtraInfo=NULL;
+				input.mi.time=0;
+
+				input.mi.dx=(LONG)((FLOAT)g_pDlg->m_vSequence[ g_unPlayIndex ].m_stPoint.x * (65535.0f / (GetSystemMetrics(SM_CXSCREEN)-1)));
+				input.mi.dy=(LONG)((FLOAT)g_pDlg->m_vSequence[ g_unPlayIndex ].m_stPoint.y * (65535.0f / (GetSystemMetrics(SM_CYSCREEN)-1)));
+
+				input.mi.dwFlags=(MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_MOVE);
+				if( g_pDlg->m_vSequence[ g_unPlayIndex ].m_unMsg == WM_LBUTTONDOWN ) 
+				{
+					input.mi.dwFlags|= (MOUSEEVENTF_LEFTDOWN|MOUSEEVENTF_LEFTUP);
+				} else if( g_pDlg->m_vSequence[ g_unPlayIndex ].m_unMsg == WM_RBUTTONDOWN ) 
+				{
+					input.mi.dwFlags|= (MOUSEEVENTF_RIGHTDOWN|MOUSEEVENTF_RIGHTUP);
+				}
+
+				for(UINT unCnt = 0 ; unCnt < g_pDlg->m_vSequence[ g_unPlayIndex ].m_dwRepeat ; unCnt++) {
+					SendInput(1,&input,sizeof(INPUT));
+					if( g_pDlg->m_vSequence[ g_unPlayIndex ].m_dwDelayMilliSec > 0 ) {
+						for(UINT uCnt = 0 ; uCnt < g_pDlg->m_vSequence[ g_unPlayIndex ].m_dwDelayMilliSec ; uCnt++) {
+							Sleep(100);
+							if(!g_bStarted) {
+								TRACE("Sequence Thread End #1\n");
+								return 0;
+							}
+						}
+					}
+				}
+				
+			} else {
+				for(UINT uCnt = 0 ; uCnt < g_pDlg->m_vSequence[ g_unPlayIndex ].m_dwDelayMilliSec ; uCnt++) {
+					Sleep(100);
+					if(!g_bStarted) {
+						TRACE("Recording Thread End #2\n");
+						return 0;
+					}
+				}
+			}
+			g_unPlayIndex++;
+			Sleep(1);
+		}
+
+	}
+
+	TRACE("Sequence Thread End\n");
 	return 0;
 }
 
@@ -165,15 +231,14 @@ static UINT WorkerThread(LPVOID pParam)
 
 			if(g_pDlg->m_nMousePosSetup == 0)
 			{
+
 				// Current Mouse Position
-				input.mi.dx=(LONG)((FLOAT)p.x * (65536.0f / GetSystemMetrics(SM_CXSCREEN)));
-				input.mi.dy=(LONG)((FLOAT)p.y * (65536.0f / GetSystemMetrics(SM_CYSCREEN)));
+				input.mi.dx=(LONG)((FLOAT)p.x * (65535.0f / (GetSystemMetrics(SM_CXSCREEN)-1)));
+				input.mi.dy=(LONG)((FLOAT)p.y * (65535.0f / (GetSystemMetrics(SM_CYSCREEN)-1)));
 			} else if(g_pDlg->m_nMousePosSetup == 1)
 			{
-				// Fixed Position
-				TRACE("x : %u, y : %u\n",g_pDlg->m_dwFixPosX, g_pDlg->m_dwFixPosY);
-				input.mi.dx=(LONG)((FLOAT)g_pDlg->m_dwFixPosX * (65536.0f / GetSystemMetrics(SM_CXSCREEN)));
-				input.mi.dy=(LONG)((FLOAT)g_pDlg->m_dwFixPosY * (65536.0f / GetSystemMetrics(SM_CYSCREEN)));
+				input.mi.dx=(LONG)((FLOAT)g_pDlg->m_dwFixPosX * (65535.0f / (GetSystemMetrics(SM_CXSCREEN)-1)));
+				input.mi.dy=(LONG)((FLOAT)g_pDlg->m_dwFixPosY * (65535.0f / (GetSystemMetrics(SM_CYSCREEN)-1)));
 			} 
 
 			SendInput(1,&input,sizeof(INPUT));
@@ -239,14 +304,18 @@ CDongAutoClickerDlg::CDongAutoClickerDlg(CWnd* pParent /*=NULL*/)
 	, m_bCapturing(FALSE)
 	, m_dwFixPosX(0)
 	, m_dwFixPosY(0)
+	, m_dwCapturePosX(0)
+	, m_dwCapturePosY(0)
 	, m_unButtonOption(0)
 	, m_unClickOption(0)
 	, m_nMousePosSetup(0)
+	, m_nSaveType(-1)
 	, m_dwRepeatInterval(20)
 	, m_bRecording(FALSE)
 	, m_strRecording(_T(""))
 	, m_strFilePath(_T(""))
-
+	, m_dwSequenceInterval(0)
+	, m_dwSequenceRepeat(0)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	g_pDlg = this;
@@ -256,7 +325,6 @@ void CDongAutoClickerDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
 	DDX_Control(pDX, IDC_COMBO_INTERVAL_PRESET, m_ctlPresetInterval);
-	DDX_Control(pDX, IDC_COMBO_RECORDING, m_ctlRecordingSetup);	
 	DDX_Text(pDX, IDC_EDIT_INTERVAL_S, m_dwIntervalSec);
 	DDX_Text(pDX, IDC_EDIT_INTERVAL_MS, m_dwIntervalMilliSec);
 	DDX_Control(pDX, IDC_SPIN_INTERVAL_S, m_ctlSpinIntervalSec);
@@ -278,6 +346,11 @@ void CDongAutoClickerDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Text(pDX, IDC_EDIT_FILEPATH, m_strFilePath);
 	DDX_Text(pDX, IDC_EDIT_REPEAT_INTERVAL, m_dwRepeatInterval);
 	DDV_MinMaxUInt(pDX, m_dwRepeatInterval, 0, 4294967295);
+	DDX_Control(pDX, IDC_BUTTON_SEQUENCE, m_btnSequence);
+	DDX_Text(pDX, IDC_EDIT_SEQUENCE_INTERVAL, m_dwSequenceInterval);
+	DDX_Text(pDX, IDC_EDIT_SEQUENCE_REPEAT_COUNT, m_dwSequenceRepeat);
+	DDX_Control(pDX, IDC_LIST_SEQUENCE, m_ctlSequenceListBox);
+	DDX_Control(pDX, IDC_CHECK_REPEAT, m_ctlRepeatCheck);
 }
 
 BEGIN_MESSAGE_MAP(CDongAutoClickerDlg, CDialogEx)
@@ -305,8 +378,17 @@ BEGIN_MESSAGE_MAP(CDongAutoClickerDlg, CDialogEx)
 	ON_NOTIFY(UDN_DELTAPOS, IDC_SPIN_INTERVAL_S, &CDongAutoClickerDlg::OnDeltaposSpinIntervalS)
 	ON_NOTIFY(UDN_DELTAPOS, IDC_SPIN_INTERVAL_MS, &CDongAutoClickerDlg::OnDeltaposSpinIntervalMs)
 	ON_BN_CLICKED(IDC_BUTTON_RECORDING, &CDongAutoClickerDlg::OnBnClickedButtonRecording)
-	ON_BN_CLICKED(IDC_BUTTON_BROWSE_RECORDING, &CDongAutoClickerDlg::OnBnClickedButtonBrowseRecording)
+	ON_BN_CLICKED(IDC_BUTTON_BROWSE_RECORDING, &CDongAutoClickerDlg::OnBnClickedButtonBrowse)
 
+	ON_BN_CLICKED(IDC_BUTTON_SEQUENCE, &CDongAutoClickerDlg::OnBnClickedButtonSequence)
+	ON_BN_CLICKED(IDC_BUTTON_SEQUENCE_IDLE, &CDongAutoClickerDlg::OnBnClickedButtonSequenceIdle)
+	ON_BN_CLICKED(IDC_BUTTON_SEQUENCE_MODIFY, &CDongAutoClickerDlg::OnBnClickedButtonSequenceModify)
+	ON_BN_CLICKED(IDC_BUTTON_SEQUENCE_DELETE, &CDongAutoClickerDlg::OnBnClickedButtonSequenceDelete)
+	ON_BN_CLICKED(IDC_CHECK_REPEAT, &CDongAutoClickerDlg::OnBnClickedCheckRepeat)
+	ON_BN_CLICKED(IDC_BUTTON_SEQUENCE_DELETE_ALL, &CDongAutoClickerDlg::OnBnClickedButtonSequenceDeleteAll)
+	ON_BN_CLICKED(IDC_BUTTON_SEQUENCE_MOVE_UP, &CDongAutoClickerDlg::OnBnClickedButtonSequenceMoveUp)
+	ON_BN_CLICKED(IDC_BUTTON_SEQUENCE_MOVE_DOWN, &CDongAutoClickerDlg::OnBnClickedButtonSequenceMoveDown)
+	ON_BN_CLICKED(IDC_RADIO_MOUSE_POSITION4, &CDongAutoClickerDlg::OnBnClickedRadioMousePosition4)
 END_MESSAGE_MAP()
 
 
@@ -356,6 +438,20 @@ BOOL CDongAutoClickerDlg::OnInitDialog()
 	m_vPresets.push_back( std::make_pair( "1 시간", 3600000 ) );
 	m_vPresets.push_back( std::make_pair( "하루에 한번", 86400000 ) );
 
+	m_ctlSequenceListBox.InsertColumn(0, "PosX");
+	m_ctlSequenceListBox.SetColumnWidth(0, 40);
+	m_ctlSequenceListBox.InsertColumn(1, "PosY");
+	m_ctlSequenceListBox.SetColumnWidth(1, 40);
+	m_ctlSequenceListBox.InsertColumn(2, "Repeat");
+	m_ctlSequenceListBox.SetColumnWidth(2, 55);
+	m_ctlSequenceListBox.InsertColumn(3, "Delay");
+	m_ctlSequenceListBox.SetColumnWidth(3, 45);
+	m_ctlSequenceListBox.InsertColumn(4, "Btn");
+	m_ctlSequenceListBox.SetColumnWidth(4, 35);
+
+	m_ctlRepeatCheck.SetCheck(TRUE);
+
+	m_ctlSequenceListBox.SendMessage(LVM_SETEXTENDEDLISTVIEWSTYLE, 0, LVS_EX_FULLROWSELECT);
 	
 	for(int i = 1 ; i <= 12 ; i++) {
 		CString temp;
@@ -368,18 +464,17 @@ BOOL CDongAutoClickerDlg::OnInitDialog()
 		m_ctlPresetInterval.AddString( m_vPresets[i].first );
 	}
 
-	m_ctlRecordingSetup.AddString("반복 실행");
-	m_ctlRecordingSetup.AddString("한번 실행");
-	m_ctlRecordingSetup.SetCurSel(0);
-
 	m_dwIntervalSec = 1;
 	m_dwIntervalMilliSec = 0;
+	m_dwSequenceInterval = 10;
+	m_dwSequenceRepeat = 1;
 	
 
 	HBITMAP hBmpTarget;
 	hBmpTarget=::LoadBitmap(AfxGetResourceHandle(), MAKEINTRESOURCE(IDB_BITMAP_TARGET));
 	m_btnTarget.SetBitmap(hBmpTarget);
 	m_btnRecording.SetBitmap(hBmpTarget);
+	m_btnSequence.SetBitmap(hBmpTarget);
 
 	m_btnPause.EnableWindow(FALSE);
 	m_ctlStartHotKey.SetCurSel(1);
@@ -390,7 +485,6 @@ BOOL CDongAutoClickerDlg::OnInitDialog()
 	m_strRecording = "녹화 안됨";
 
 	SetupHotKey();
-
 
 	UpdateData(FALSE);
 	return TRUE;  // 포커스를 컨트롤에 설정하지 않으면 TRUE를 반환합니다.
@@ -466,9 +560,11 @@ void CDongAutoClickerDlg::OnBnClickedCancel()
 	}
 	TRACE("OnCancel\n");
 
+	/*
 	if(m_fileRecording.m_hFile != CFile::hFileNull) {
 		m_fileRecording.Close();
 	}
+	*/
 	CDialogEx::OnCancel();
 }
 
@@ -498,14 +594,40 @@ BOOL CDongAutoClickerDlg::PreTranslateMessage(MSG* pMsg)
 			m_bCapturing = FALSE;
 
 			GetCursorPos(&p);
+			m_dwCapturePosX = p.x;
+			m_dwCapturePosY = p.y;
 
-			m_dwFixPosX = p.x;
-			m_dwFixPosY = p.y;
+			if( m_nMousePosSetup == 1) { // Fix Position
+				m_dwFixPosX = p.x;
+				m_dwFixPosY = p.y;
+			} else if(m_nMousePosSetup == 3) { // Sequence Position
+				AddNewSequence();
+				SaveToFile(TRUE);
+			}
 
 			// 릴리즈 할 필요 없다. 취소의 개념이 있을 수 없다.
 			ReleaseCapture();
 			UpdateData(FALSE);
 
+		}
+	} else if( pMsg->message == WM_RBUTTONUP )
+	{
+		if(m_bCapturing == TRUE && m_nMousePosSetup == 3) // Sequence
+		{
+			POINT p;
+
+			m_bCapturing = FALSE;
+
+			GetCursorPos(&p);
+			m_dwCapturePosX = p.x;
+			m_dwCapturePosY = p.y;
+
+			AddNewSequence(FALSE, TRUE);
+			SaveToFile(TRUE);
+
+			// 릴리즈 할 필요 없다. 취소의 개념이 있을 수 없다.
+			ReleaseCapture();
+			UpdateData(FALSE);
 		}
 	}
 
@@ -533,15 +655,18 @@ void CDongAutoClickerDlg::OnBnClickedButtonStart()
 		g_bStarted = TRUE;
 		TRACE("Started %d\n",g_bStarted);
 
-		g_unRecordingIndex = 0;
+		g_unPlayIndex = 0;
 		m_dwRecordingDelay = GetTickCount();
 
-		if( m_nMousePosSetup == 2)
-		{
-			m_pWinThread = AfxBeginThread(RecordingThread,this);
-		} else 
+		if( m_nMousePosSetup < 2)
 		{
 			m_pWinThread = AfxBeginThread(WorkerThread,this);
+		} else if( m_nMousePosSetup == 2)
+		{
+			m_pWinThread = AfxBeginThread(RecordingThread,this);
+		} else if( m_nMousePosSetup == 3)
+		{
+			m_pWinThread = AfxBeginThread(SequenceThread,this);
 		}
 
 	}
@@ -582,66 +707,120 @@ void CDongAutoClickerDlg::SetupHotKey()
 	RegisterHotKey(this->m_hWnd, 1000, 0, VK_F4 );
 }
 
-void CDongAutoClickerDlg::OpenRecordingFile()
+void CDongAutoClickerDlg::LoadMouseInformationFromFile()
 {
+	/*
 	if(m_fileRecording.m_hFile != CFile::hFileNull) {
 		m_fileRecording.Close();
 	}
+	*/
+	// 시퀀스와 레코딩 모두를 클리어하여 두개가 공존하게 하지 않는다.
+	m_vRecording.clear();
+	m_vSequence.clear();
+	m_strRecording.Format("0 개");
+	m_ctlSequenceListBox.DeleteAllItems();
 
 	m_fileRecording.Open( m_strFilePath, CFile::modeReadWrite | CFile::modeNoTruncate | CFile::modeCreate, 0);
-	LoadRecordingFromFile();
-}
 
-void CDongAutoClickerDlg::LoadRecordingFromFile()
-{
 	// Load recording data from file
-	char szUnique = 'a';
-	if(m_fileRecording.GetLength() > 0) {
-		m_fileRecording.Read(&szUnique, 1);
-
-		if(szUnique == 'z') {
-			TRACE("This is dac file\n");
-			m_vRecording.clear();
+	char szUnique[3];
+	char szType;
+	if(m_fileRecording.GetLength() > 4) {
+		m_fileRecording.SeekToBegin();
+		m_fileRecording.Read(szUnique, 3);
+		if( szUnique[0] == 'd' && szUnique[1] == 'a' && szUnique[2] == 'c' ) {
+			m_fileRecording.Read(&szType, 1);			
 
 			UINT unSize;
 			m_fileRecording.Read(&unSize, sizeof(UINT));
+			TRACE("항목 개수는 %d\n",unSize);
+			
 
-			TRACE("Recording Number %d\n", unSize);
+			if(szType == 'r') {
+				TRACE("This is recording file\n");
+				m_nSaveType = 2;
+				m_nMousePosSetup = 2;
 
-			for(UINT unCnt = 0 ; unCnt < unSize ; unCnt++) 
-			{
-				CMouseInformation mi;
-				m_fileRecording.Read(&mi, sizeof(mi));
-				m_vRecording.push_back(mi);
+				for(UINT unCnt = 0 ; unCnt < unSize ; unCnt++) 
+				{
+					CMouseInformation mi;
+					m_fileRecording.Read(&mi, sizeof(mi));
+					m_vRecording.push_back(mi);
+				}
+
+				m_strRecording.Format("%d 개",m_vRecording.size());
+			} else if(szType == 's') {
+				TRACE("This is sequence file\n");
+				m_nSaveType = 3;
+				m_nMousePosSetup = 3;
+				m_ctlSequenceListBox.DeleteAllItems();
+
+				for(UINT unCnt = 0 ; unCnt < unSize ; unCnt++) 
+				{
+					CMouseInformation mi;
+					m_fileRecording.Read(&mi, sizeof(mi));
+					m_vSequence.push_back(mi);
+
+					AddSequenceOneLine(unCnt, mi);
+					
+				}
+				TRACE("%d개 항목 로드 완료\n", m_vSequence.size());
+
+
+			} else {
+				TRACE("I don't know the file format %c\n", szUnique);
 			}
-			m_strRecording.Format("%d 개",m_vRecording.size());
+
 
 		} else {
-			TRACE("This is NOT dac file\n");
+			TRACE("This is NOT dac file %c %c %c\n",szUnique[0], szUnique[1], szUnique[2]);
+
 		}
+	} else {
+		TRACE("This is NOT dac file, size = %d\n",m_fileRecording.GetLength());
 	}
+
+	m_fileRecording.Close();
+	UpdateData(FALSE);
 }
 
-void CDongAutoClickerDlg::SaveRecordingToFile()
+void CDongAutoClickerDlg::SaveToFile(BOOL bSequence)
 {
-	
-
+	/*
 	if(m_fileRecording.m_hFile != CFile::hFileNull)
 	{
 		m_fileRecording.Close();
 	}
+	*/
 
+	std::vector< CMouseInformation >* m_vPtr = &m_vRecording;
 	m_fileRecording.Open( m_strFilePath, CFile::modeWrite | CFile::modeCreate, 0);
-	char szUnique = 'z';
-	UINT unRecordingNum = m_vRecording.size();
-	m_fileRecording.Write( (const void*)&szUnique, sizeof(char) );
-	m_fileRecording.Write( (const void*)&unRecordingNum, sizeof(UINT) );
-	for(UINT i = 0 ; i < unRecordingNum ; i++) {
-		//TRACE("Msg %#x Point %d %d Delay %d\n", m_vRecording[i].m_unMsg, m_vRecording[i].m_stPoint.x, m_vRecording[i].m_stPoint.y, m_vRecording[i].m_dwDelayMilliSec);
-		m_fileRecording.Write( (const void*)&m_vRecording[i], sizeof(m_vRecording[i]) );
+	char szUnique[3] = { 'd', 'a', 'c' };
+	char szType = 'r';
+	m_nSaveType = 2;
+	if(bSequence == TRUE) {
+		szType = 's';
+		m_vPtr = &m_vSequence;
+		m_nSaveType = 3;
+	} 
+	UINT unItemNum = m_vPtr->size();
+	m_fileRecording.Write( (const void*)szUnique, sizeof(szUnique) );
+	m_fileRecording.Write( (const void*)&szType, sizeof(char) );
+	m_fileRecording.Write( (const void*)&unItemNum, sizeof(UINT) );
+	for(UINT i = 0 ; i < unItemNum ; i++) {
+		TRACE("Msg %#x Point %d %d Delay %d\n", (*m_vPtr)[i].m_unMsg, (*m_vPtr)[i].m_stPoint.x, (*m_vPtr)[i].m_stPoint.y, (*m_vPtr)[i].m_dwDelayMilliSec);
+		m_fileRecording.Write( (const void*)&(*m_vPtr)[i], sizeof((*m_vPtr)[i]) );
 	}
 	m_fileRecording.Close();
-	
+}
+
+BOOL CDongAutoClickerDlg::CheckBeforePressButton()
+{
+	if(m_bRecording == TRUE || g_bStarted == TRUE || m_bCapturing == TRUE) {
+		AfxMessageBox("레코딩 중이거나, 작동 중에는 해당 기능이 작동하지 않습니다.");
+		return FALSE;
+	}
+	return TRUE;
 }
 
 void CDongAutoClickerDlg::OnBnClickedButtonSetup()
@@ -700,6 +879,8 @@ void CDongAutoClickerDlg::OnCbnSelchangeComboIntervalPreset()
 
 void CDongAutoClickerDlg::OnBnClickedButtonSetFixPosition()
 {
+	if(CheckBeforePressButton() == FALSE) return;
+
 	// 마우스 캡쳐 시작.
 	UpdateData(TRUE);
 	m_nMousePosSetup = 1;
@@ -713,17 +894,26 @@ void CDongAutoClickerDlg::OnBnClickedButtonSetFixPosition()
 void CDongAutoClickerDlg::OnBnClickedRadioMousePosition()
 {
 	UpdateData(TRUE);
+	m_ctlRepeatCheck.SetCheck(TRUE);
 }
 
 
 void CDongAutoClickerDlg::OnBnClickedRadioMousePosition2()
 {
 	UpdateData(TRUE);
+	m_ctlRepeatCheck.SetCheck(TRUE);
 }
 
 
 void CDongAutoClickerDlg::OnBnClickedRadioMousePosition3()
 {
+	
+	UpdateData(TRUE);
+}
+
+void CDongAutoClickerDlg::OnBnClickedRadioMousePosition4()
+{
+	
 	UpdateData(TRUE);
 }
 
@@ -759,9 +949,9 @@ void CDongAutoClickerDlg::OnHotKey(UINT nHotKeyId, UINT nKey1, UINT nKey2)
 			for(UINT i = 0 ; i < m_vRecording.size() ; i++) {
 				TRACE("Msg %#x Point %d %d Delay %d\n", m_vRecording[i].m_unMsg, m_vRecording[i].m_stPoint.x, m_vRecording[i].m_stPoint.y, m_vRecording[i].m_dwDelayMilliSec);
 			}
-			SaveRecordingToFile();
+			SaveToFile();
 
-			LoadRecordingFromFile();
+			LoadMouseInformationFromFile();
 			UpdateData(FALSE);
 		}
 	}
@@ -846,18 +1036,34 @@ void CDongAutoClickerDlg::OnDeltaposSpinIntervalMs(NMHDR *pNMHDR, LRESULT *pResu
 
 void CDongAutoClickerDlg::OnBnClickedButtonRecording()
 {
+	if(CheckBeforePressButton() == FALSE) return;
+
 	UpdateData(TRUE);
-	m_nMousePosSetup = 2;	
+	m_nMousePosSetup = 2;
+	UpdateData(FALSE);
 	
 	if(m_bRecording == FALSE)
 	{
-		if(m_strFilePath.GetLength() <= 0 || m_fileRecording == 0) {
-			OnBnClickedButtonBrowseRecording();
+		if( m_nSaveType == 3) {
+			if( MessageBox("시퀀스 파일이 레코딩 파일로 바뀝니다. 계속 하시겠습니까?\n새로운 파일을 이용하는 것을 권장합니다.","경고",MB_YESNO) == IDNO )
+			{
+				return;
+			} else 
+			{
+				m_ctlSequenceListBox.DeleteAllItems();
+				m_vSequence.clear();
+			}
 		}
 
+		if(m_strFilePath.GetLength() <= 0 /*|| m_fileRecording == CFile::hFileNull*/) {
+			OnBnClickedButtonBrowse();
+		}
+
+		/*
 		if(m_fileRecording.GetLength() > 0) {
 			AfxMessageBox("파일 안 기존 내용은 삭제됩니다.");
 		}
+		*/
 
 		m_vRecording.clear();
 		g_hHook = SetWindowsHookEx( WH_MOUSE_LL, (HOOKPROC)MouseMsgProc, 0, 0 );
@@ -880,18 +1086,255 @@ void CDongAutoClickerDlg::OnBnClickedButtonRecording()
 	UpdateData(FALSE);
 }
 
-void CDongAutoClickerDlg::OnBnClickedButtonBrowseRecording()
+void CDongAutoClickerDlg::OnBnClickedButtonBrowse()
 {
+	if(CheckBeforePressButton() == FALSE) return;
+
 	UpdateData(TRUE);
-	m_nMousePosSetup = 2;
 
 	CFileDialog dlgFile(TRUE, "dac", 0, 0,"DAC (*.dac)|*.dac|All (*.*)|*.*||");
 	if(dlgFile.DoModal() == IDOK) {
 		m_strFilePath = dlgFile.GetPathName();
 		TRACE("File Path: %s\n",m_strFilePath);
 
-		OpenRecordingFile();
+		LoadMouseInformationFromFile();
 	}
 
 	UpdateData(FALSE);
+}
+
+void CDongAutoClickerDlg::OnBnClickedButtonSequence()
+{
+	if(CheckBeforePressButton() == FALSE) return;
+
+	UpdateData(TRUE);
+	m_nMousePosSetup = 3;
+	UpdateData(FALSE);
+
+	if( m_nSaveType == 2) {
+		if( MessageBox("레코딩 파일이 시퀀스 파일로 바뀝니다. 계속 하시겠습니까?\n새로운 파일을 이용하는 것을 권장합니다.","경고",MB_YESNO) == IDNO )
+		{
+			return;
+		} else 
+		{
+			m_strRecording.Format("0 개");
+			m_vRecording.clear();
+			UpdateData(FALSE);
+		}
+	}
+
+	if(m_strFilePath.GetLength() <= 0 /*|| m_fileRecording == 0*/) {
+		OnBnClickedButtonBrowse();
+		return;
+	}
+
+	m_bCapturing = TRUE;
+	SetCapture();
+}
+
+
+void CDongAutoClickerDlg::OnBnClickedButtonSequenceIdle()
+{
+	if(CheckBeforePressButton() == FALSE) return;
+
+	if( m_nSaveType == 2) {
+		if( MessageBox("레코딩 파일이 시퀀스 파일로 바뀝니다. 계속 하시겠습니까?\n새로운 파일을 이용하는 것을 권장합니다.","경고",MB_YESNO) == IDNO )
+		{
+			return;
+		} else 
+		{
+			m_strRecording.Format("0 개");
+			m_vRecording.clear();
+			UpdateData(FALSE);
+		}
+	}
+
+	AddNewSequence(TRUE);
+	SaveToFile(TRUE);
+}
+
+
+void CDongAutoClickerDlg::OnBnClickedButtonSequenceModify()
+{
+	INT nIndex = m_ctlSequenceListBox.GetSelectionMark();
+	if(CheckBeforePressButton() == FALSE) return;
+	if(nIndex < 0) return;
+
+	
+
+	CSequenceDlg dlg;
+	dlg.m_bDelayOnly = m_vSequence[ nIndex ].m_bDelayOnly;
+	if(m_vSequence[ nIndex ].m_bDelayOnly == FALSE) {
+		dlg.m_dwDelay = m_vSequence[ nIndex ].m_dwDelayMilliSec;
+		dlg.m_dwPositionX = m_vSequence[ nIndex ].m_stPoint.x;
+		dlg.m_dwPositionY = m_vSequence[ nIndex ].m_stPoint.y;
+		dlg.m_dwRepeat = m_vSequence[ nIndex ].m_dwRepeat;
+		dlg.m_nButtonPosition = m_vSequence[ nIndex ].m_unMsg == WM_LBUTTONDOWN ? 0 : 1;
+	}
+
+	if( dlg.DoModal() == IDOK ) 
+	{
+		m_vSequence[ nIndex ].m_bDelayOnly = dlg.m_bDelayOnly;
+		if( !m_vSequence[ nIndex ].m_bDelayOnly )
+		{
+			m_vSequence[ nIndex ].m_dwDelayMilliSec = dlg.m_dwDelay;
+			m_vSequence[ nIndex ].m_dwRepeat = dlg.m_dwRepeat;
+			m_vSequence[ nIndex ].m_unMsg = (dlg.m_nButtonPosition == 0 ? WM_LBUTTONDOWN : WM_RBUTTONDOWN);
+			m_vSequence[ nIndex ].m_stPoint.x = dlg.m_dwPositionX;
+			m_vSequence[ nIndex ].m_stPoint.y = dlg.m_dwPositionY;
+
+			AddSequenceAllWithVector();
+			SaveToFile(TRUE);
+		}
+	}
+}
+
+
+void CDongAutoClickerDlg::OnBnClickedButtonSequenceDelete()
+{
+	if(CheckBeforePressButton() == FALSE) return;
+
+	if( m_ctlSequenceListBox.GetSelectionMark() >= 0) {
+		TRACE("Selected Item is %d=n", m_ctlSequenceListBox.GetSelectionMark());
+
+		m_vSequence.erase( m_vSequence.begin() + m_ctlSequenceListBox.GetSelectionMark() );
+		m_ctlSequenceListBox.DeleteItem(m_ctlSequenceListBox.GetSelectionMark());
+
+		SaveToFile(TRUE);
+	}
+}
+
+void CDongAutoClickerDlg::AddNewSequence(BOOL bDelayOnly, BOOL bRightClick)
+{
+	// x, y, rep, del, btn, style
+	UpdateData(TRUE);
+
+	UINT unIndex = m_vSequence.size();
+
+	CMouseInformation mi;
+	mi.m_dwDelayMilliSec = m_dwSequenceInterval;
+	mi.m_dwRepeat = m_dwSequenceRepeat;
+	mi.m_bDelayOnly = bDelayOnly;
+	mi.m_stPoint.x = m_dwCapturePosX;
+	mi.m_stPoint.y = m_dwCapturePosY;
+
+
+
+	if( bRightClick == FALSE )
+	{
+		mi.m_unMsg = WM_LBUTTONDOWN;
+	} else 
+	{
+		mi.m_unMsg = WM_RBUTTONDOWN;
+	}
+
+	m_vSequence.push_back(mi);
+	AddSequenceOneLine(unIndex, mi);
+}
+
+void CDongAutoClickerDlg::AddSequenceColumn(UINT unIndex, UINT unSubItem, char* szText)
+{
+	LVITEM lv;
+	lv.iItem = unIndex;
+	lv.iSubItem = unSubItem;
+	lv.pszText = szText;
+	lv.mask = LVIF_TEXT;
+	if(unSubItem == 0) {
+		m_ctlSequenceListBox.InsertItem(&lv);
+	} else {
+		m_ctlSequenceListBox.SetItem(&lv);
+	}
+}
+
+void CDongAutoClickerDlg::AddSequenceOneLine(UINT unIndex, CMouseInformation mi)
+{
+	CString strTemp;
+	AddSequenceColumn(unIndex, 0, mi.m_bDelayOnly ? "-" : (strTemp.Format("%d", mi.m_stPoint.x), strTemp.GetBuffer()));
+	AddSequenceColumn(unIndex, 1, mi.m_bDelayOnly ? "-" : (strTemp.Format("%d", mi.m_stPoint.y), strTemp.GetBuffer()));
+	AddSequenceColumn(unIndex, 2, mi.m_bDelayOnly ? "-" : (strTemp.Format("%d", mi.m_dwRepeat), strTemp.GetBuffer()));
+	AddSequenceColumn(unIndex, 3, (strTemp.Format("%d", mi.m_dwDelayMilliSec), strTemp.GetBuffer()));
+	AddSequenceColumn(unIndex, 4, mi.m_bDelayOnly ? "-" : ( mi.m_unMsg == WM_LBUTTONDOWN ? "L" : "R" ));
+}
+
+void CDongAutoClickerDlg::AddSequenceAllWithVector()
+{
+	m_ctlSequenceListBox.DeleteAllItems();
+	for(UINT unCnt = 0 ; unCnt < m_vSequence.size() ; unCnt++)
+	{
+		CMouseInformation mi;
+		mi.m_bDelayOnly = m_vSequence[unCnt].m_bDelayOnly;
+		mi.m_dwDelayMilliSec = m_vSequence[unCnt].m_dwDelayMilliSec;
+		mi.m_dwRepeat = m_vSequence[unCnt].m_dwRepeat;
+		mi.m_stPoint = m_vSequence[unCnt].m_stPoint;
+		mi.m_unMsg = m_vSequence[unCnt].m_unMsg;
+
+		AddSequenceOneLine( unCnt, mi );
+	}
+
+}
+
+void CDongAutoClickerDlg::OnBnClickedCheckRepeat()
+{
+	UpdateData(TRUE);
+	if(m_nMousePosSetup <= 1) {
+		m_ctlRepeatCheck.SetCheck(TRUE);
+	}
+}
+
+
+void CDongAutoClickerDlg::OnBnClickedButtonSequenceDeleteAll()
+{
+	if(CheckBeforePressButton() == FALSE) return;
+
+	if(m_vSequence.size() > 0) {
+
+		if(MessageBox("파일의 모든 내용이 삭제 됩니다.","주의1!", MB_YESNO) == IDYES) {
+			m_ctlSequenceListBox.DeleteAllItems();
+			m_vSequence.clear();
+			SaveToFile(TRUE);
+		}
+	} else {
+		AfxMessageBox("삭제할 내용이 없습니다.");
+	}
+}
+
+
+void CDongAutoClickerDlg::OnBnClickedButtonSequenceMoveUp()
+{
+	INT nIndex = m_ctlSequenceListBox.GetSelectionMark();
+
+
+	if(nIndex <= 0) {
+		return;
+	} else {
+		CMouseInformation mi = m_vSequence[nIndex - 1];
+		m_vSequence.erase( m_vSequence.begin() + nIndex - 1 );
+		m_vSequence.insert( m_vSequence.begin() + nIndex, mi );
+
+		AddSequenceAllWithVector();
+		SaveToFile(TRUE);
+
+		m_ctlSequenceListBox.SetItemState( nIndex - 1, LVIS_FOCUSED | LVIS_SELECTED,LVIS_FOCUSED | LVIS_SELECTED );
+		m_ctlSequenceListBox.SetFocus();
+	}
+}
+
+
+void CDongAutoClickerDlg::OnBnClickedButtonSequenceMoveDown()
+{
+	INT nIndex = m_ctlSequenceListBox.GetSelectionMark();
+	if(nIndex == m_vSequence.size() - 1 || nIndex < 0) {
+		return;
+	} else {
+
+		CMouseInformation mi = m_vSequence[nIndex];
+		m_vSequence.erase( m_vSequence.begin() + nIndex );
+		m_vSequence.insert( m_vSequence.begin() + nIndex + 1, mi );
+
+		AddSequenceAllWithVector();
+		SaveToFile(TRUE);
+
+		m_ctlSequenceListBox.SetItemState( nIndex + 1, LVIS_FOCUSED | LVIS_SELECTED,LVIS_FOCUSED | LVIS_SELECTED );
+		m_ctlSequenceListBox.SetFocus();
+	}
 }
